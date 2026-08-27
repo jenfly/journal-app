@@ -44,6 +44,7 @@ const journalTitleText = document.getElementById("journal-title");
 const journalMenu = document.getElementById("journal-menu");
 const journalMenuList = document.getElementById("journal-menu-list");
 const journalNewBtn = document.getElementById("journal-new-btn");
+const journalExportBtn = document.getElementById("journal-export-btn");
 const journalOverlay = document.getElementById("journal-overlay");
 const journalNamePanel = document.getElementById("journal-name-panel");
 const journalNameTitle = document.getElementById("journal-name-title");
@@ -385,6 +386,23 @@ function renderJournalMenu() {
   }
 }
 
+function exportActiveJournal() {
+  const journal = getActiveJournal();
+  const sorted = [...journal.entries].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  const lines = [`# ${journal.name}`, ""];
+  for (const entry of sorted) {
+    lines.push(`## ${formatTimestamp(entry.timestamp)}`, entry.text, "");
+  }
+  const blob = new Blob([lines.join("\n")], { type: "text/markdown" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${journal.name}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+  closeJournalMenu();
+}
+
 function openJournalNamePanel(mode, journal) {
   journalNameMode = mode;
   journalNameTargetId = journal ? journal.id : null;
@@ -417,6 +435,7 @@ function closeJournalOverlay() {
 }
 
 journalNewBtn.addEventListener("click", () => openJournalNamePanel("create"));
+journalExportBtn.addEventListener("click", exportActiveJournal);
 
 journalNameCancelBtn.addEventListener("click", closeJournalOverlay);
 journalDeleteCancelBtn.addEventListener("click", closeJournalOverlay);
