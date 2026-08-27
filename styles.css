@@ -31,9 +31,74 @@ body {
   text-align: center;
 }
 
+.app-header-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .app-header h1 {
   margin: 0;
   font-size: 1.5rem;
+}
+
+.settings {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.icon-btn {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.icon-btn.danger {
+  color: var(--danger);
+  font-size: 1.1rem;
+}
+
+.settings-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.3rem);
+  min-width: 9rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  z-index: 5;
+}
+
+.menu-item {
+  display: block;
+  width: 100%;
+  padding: 0.65rem 0.9rem;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-item:hover {
+  background: var(--border);
 }
 
 .status {
@@ -137,6 +202,17 @@ main {
   font-size: 1.1rem;
 }
 
+.editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.confirm-delete-text {
+  margin: 0;
+  color: var(--muted);
+}
+
 .editor textarea {
   flex: 1;
   min-height: 40vh;
@@ -170,18 +246,6 @@ main {
   padding: 0 1rem;
 }
 
-.auth-section h2 {
-  font-size: 1.05rem;
-  margin: 0 0 0.35rem;
-}
-
-.auth-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-}
-
 .btn {
   padding: 0.6rem 0.9rem;
   border-radius: 0.6rem;
@@ -205,4 +269,12 @@ main {
 
 .btn-secondary:hover {
   background: var(--border);
+}
+
+.btn-danger {
+  background: var(--danger);
+}
+
+.btn-danger:hover {
+  background: #dc2626;
 }

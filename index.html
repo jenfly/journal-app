@@ -18,16 +18,21 @@
 </head>
 <body>
 <header class="app-header">
-  <h1>Journal</h1>
+  <div class="app-header-row">
+    <h1>Journal</h1>
+    <div class="settings">
+      <button id="settings-btn" type="button" class="icon-btn hidden" aria-label="Settings" aria-haspopup="true" aria-expanded="false">&#8942;</button>
+      <div id="settings-menu" class="settings-menu hidden">
+        <button id="signout-btn" type="button" class="menu-item">Sign out</button>
+      </div>
+    </div>
+  </div>
   <p id="status" class="status" aria-live="polite"></p>
 </header>
 
-<section class="auth-section">
+<section id="auth-section" class="auth-section">
   <p id="auth-status" class="status" aria-live="polite">Not signed in</p>
-  <div class="auth-actions">
-    <button id="signin-btn" type="button" class="btn">Sign in with Google</button>
-    <button id="signout-btn" type="button" class="btn btn-secondary hidden">Sign out</button>
-  </div>
+  <button id="signin-btn" type="button" class="btn">Sign in with Google</button>
 </section>
 
 <main id="journal-section" class="hidden">
@@ -38,12 +43,24 @@
 <button id="fab" type="button" class="fab hidden" aria-label="New entry">+</button>
 
 <div id="editor-overlay" class="editor-overlay hidden">
-  <div class="editor">
-    <h2 id="editor-title">New entry</h2>
+  <div id="editor-panel" class="editor">
+    <div class="editor-header">
+      <h2 id="editor-title">New entry</h2>
+      <button id="delete-btn" type="button" class="icon-btn danger hidden" aria-label="Delete entry">&#128465;</button>
+    </div>
     <textarea id="editor-textarea" placeholder="Write your entry…"></textarea>
     <div class="editor-actions">
       <button id="editor-cancel-btn" type="button" class="btn btn-secondary">Cancel</button>
       <button id="editor-done-btn" type="button" class="btn">Done</button>
+    </div>
+  </div>
+
+  <div id="confirm-delete-panel" class="editor hidden">
+    <h2>Delete this entry?</h2>
+    <p class="confirm-delete-text">This can't be undone.</p>
+    <div class="editor-actions">
+      <button id="confirm-delete-cancel-btn" type="button" class="btn btn-secondary">Cancel</button>
+      <button id="confirm-delete-btn" type="button" class="btn btn-danger">Delete</button>
     </div>
   </div>
 </div>

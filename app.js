@@ -18,17 +18,25 @@ const HAS_SIGNED_IN_KEY = "journal_app_google_has_signed_in";
 
 const signinBtn = document.getElementById("signin-btn");
 const signoutBtn = document.getElementById("signout-btn");
+const authSection = document.getElementById("auth-section");
 const authStatus = document.getElementById("auth-status");
 const appStatus = document.getElementById("status");
+const settingsBtn = document.getElementById("settings-btn");
+const settingsMenu = document.getElementById("settings-menu");
 const journalSection = document.getElementById("journal-section");
 const entriesList = document.getElementById("entries");
 const emptyState = document.getElementById("empty");
 const fab = document.getElementById("fab");
 const editorOverlay = document.getElementById("editor-overlay");
+const editorPanel = document.getElementById("editor-panel");
 const editorTitle = document.getElementById("editor-title");
 const editorTextarea = document.getElementById("editor-textarea");
 const editorCancelBtn = document.getElementById("editor-cancel-btn");
 const editorDoneBtn = document.getElementById("editor-done-btn");
+const deleteBtn = document.getElementById("delete-btn");
+const confirmDeletePanel = document.getElementById("confirm-delete-panel");
+const confirmDeleteCancelBtn = document.getElementById("confirm-delete-cancel-btn");
+const confirmDeleteBtn = document.getElementById("confirm-delete-btn");
 
 let tokenClient;
 let accessToken = null;
@@ -56,12 +64,13 @@ function storeToken(token, expiresInSeconds) {
 }
 
 function setSignedInUI(signedIn) {
-  signinBtn.classList.toggle("hidden", signedIn);
-  signoutBtn.classList.toggle("hidden", !signedIn);
+  authSection.classList.toggle("hidden", signedIn);
+  settingsBtn.classList.toggle("hidden", !signedIn);
   journalSection.classList.toggle("hidden", !signedIn);
   fab.classList.toggle("hidden", !signedIn);
-  authStatus.textContent = signedIn ? "Signed in to Google" : "Sign in to view your journal";
+  authStatus.textContent = "Sign in to view your journal";
   if (!signedIn) {
+    closeSettingsMenu();
     closeEditor();
     entries = [];
     journalFileId = null;
@@ -69,6 +78,11 @@ function setSignedInUI(signedIn) {
     emptyState.classList.add("hidden");
     appStatus.textContent = "";
   }
+}
+
+function closeSettingsMenu() {
+  settingsMenu.classList.add("hidden");
+  settingsBtn.setAttribute("aria-expanded", "false");
 }
 
 function handleTokenResponse(response) {
@@ -123,6 +137,23 @@ signoutBtn.addEventListener("click", () => {
   localStorage.removeItem(TOKEN_STORAGE_KEY);
   localStorage.removeItem(HAS_SIGNED_IN_KEY);
   setSignedInUI(false);
+});
+
+settingsBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const isOpen = !settingsMenu.classList.contains("hidden");
+  if (isOpen) {
+    closeSettingsMenu();
+  } else {
+    settingsMenu.classList.remove("hidden");
+    settingsBtn.setAttribute("aria-expanded", "true");
+  }
+});
+
+document.addEventListener("click", (e) => {
+  if (!settingsMenu.classList.contains("hidden") && !e.target.closest(".settings")) {
+    closeSettingsMenu();
+  }
 });
 
 // ---- Drive-backed journal storage ----
@@ -240,12 +271,17 @@ function openEditor(entry) {
   editingTimestamp = entry ? entry.timestamp : null;
   editorTitle.textContent = entry ? "Edit entry" : "New entry";
   editorTextarea.value = entry ? entry.text : "";
+  deleteBtn.classList.toggle("hidden", !entry);
+  editorPanel.classList.remove("hidden");
+  confirmDeletePanel.classList.add("hidden");
   editorOverlay.classList.remove("hidden");
   editorTextarea.focus();
 }
 
 function closeEditor() {
   editorOverlay.classList.add("hidden");
+  editorPanel.classList.remove("hidden");
+  confirmDeletePanel.classList.add("hidden");
   editingTimestamp = null;
   editorTextarea.value = "";
 }
@@ -260,6 +296,17 @@ entriesList.addEventListener("click", (e) => {
 });
 
 editorCancelBtn.addEventListener("click", closeEditor);
+
+async function persistEntries() {
+  appStatus.textContent = "Saving…";
+  try {
+    await saveEntriesToDrive(journalFileId, entries);
+    appStatus.textContent = "";
+  } catch (err) {
+    console.error(err);
+    appStatus.textContent = "Save failed — try again";
+  }
+}
 
 editorDoneBtn.addEventListener("click", async () => {
   const text = editorTextarea.value.trim();
@@ -277,14 +324,24 @@ editorDoneBtn.addEventListener("click", async () => {
 
   closeEditor();
   renderEntries();
-  appStatus.textContent = "Saving…";
-  try {
-    await saveEntriesToDrive(journalFileId, entries);
-    appStatus.textContent = "";
-  } catch (err) {
-    console.error(err);
-    appStatus.textContent = "Save failed — try again";
-  }
+  await persistEntries();
+});
+
+deleteBtn.addEventListener("click", () => {
+  editorPanel.classList.add("hidden");
+  confirmDeletePanel.classList.remove("hidden");
+});
+
+confirmDeleteCancelBtn.addEventListener("click", () => {
+  confirmDeletePanel.classList.add("hidden");
+  editorPanel.classList.remove("hidden");
+});
+
+confirmDeleteBtn.addEventListener("click", async () => {
+  entries = entries.filter((en) => en.timestamp !== editingTimestamp);
+  closeEditor();
+  renderEntries();
+  await persistEntries();
 });
 
 // Service worker registration — enables installability + offline shell.
