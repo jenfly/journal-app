@@ -101,6 +101,103 @@ body {
   background: var(--border);
 }
 
+.journal-switcher {
+  position: relative;
+}
+
+.journal-title-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  border-radius: 0.5rem;
+}
+
+.journal-title-btn:hover {
+  background: var(--surface);
+}
+
+.journal-title-btn:disabled {
+  cursor: default;
+}
+
+.journal-title-btn:disabled:hover {
+  background: none;
+}
+
+.journal-title-btn .caret {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.journal-menu {
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  min-width: 14rem;
+  text-align: left;
+}
+
+.journal-menu-list {
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.journal-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.3rem;
+}
+
+.journal-menu-name {
+  flex: 1;
+  display: block;
+  padding: 0.65rem 0.5rem;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 0.4rem;
+}
+
+.journal-menu-name:hover {
+  background: var(--border);
+}
+
+.journal-menu-name.active {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.icon-btn.small {
+  width: 1.8rem;
+  height: 1.8rem;
+  font-size: 0.95rem;
+}
+
+.icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.icon-btn:disabled:hover {
+  background: none;
+  color: var(--muted);
+}
+
+.menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 0.3rem 0;
+}
+
 .status {
   min-height: 1.2em;
   margin: 0.35rem 0 0;
@@ -226,6 +323,20 @@ main {
 }
 
 .editor textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.editor input[type="text"] {
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.editor input[type="text"]:focus {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }

@@ -19,7 +19,17 @@
 <body>
 <header class="app-header">
   <div class="app-header-row">
-    <h1>Journal</h1>
+    <div class="journal-switcher">
+      <button id="journal-title-btn" type="button" class="journal-title-btn" aria-haspopup="true" aria-expanded="false" disabled>
+        <h1 id="journal-title">Journal</h1>
+        <span class="caret" aria-hidden="true">&#9662;</span>
+      </button>
+      <div id="journal-menu" class="settings-menu journal-menu hidden">
+        <div id="journal-menu-list" class="journal-menu-list"></div>
+        <div class="menu-divider"></div>
+        <button id="journal-new-btn" type="button" class="menu-item">+ New journal</button>
+      </div>
+    </div>
     <div class="settings">
       <button id="settings-btn" type="button" class="icon-btn hidden" aria-label="Settings" aria-haspopup="true" aria-expanded="false">&#8942;</button>
       <div id="settings-menu" class="settings-menu hidden">
@@ -61,6 +71,28 @@
     <div class="editor-actions">
       <button id="confirm-delete-cancel-btn" type="button" class="btn btn-secondary">Cancel</button>
       <button id="confirm-delete-btn" type="button" class="btn btn-danger">Delete</button>
+    </div>
+  </div>
+</div>
+
+<div id="journal-overlay" class="editor-overlay hidden">
+  <div id="journal-name-panel" class="editor">
+    <div class="editor-header">
+      <h2 id="journal-name-title">New journal</h2>
+    </div>
+    <input id="journal-name-input" type="text" placeholder="Journal name" maxlength="60">
+    <div class="editor-actions">
+      <button id="journal-name-cancel-btn" type="button" class="btn btn-secondary">Cancel</button>
+      <button id="journal-name-save-btn" type="button" class="btn">Save</button>
+    </div>
+  </div>
+
+  <div id="journal-delete-panel" class="editor hidden">
+    <h2>Delete journal?</h2>
+    <p id="journal-delete-text" class="confirm-delete-text">This can't be undone.</p>
+    <div class="editor-actions">
+      <button id="journal-delete-cancel-btn" type="button" class="btn btn-secondary">Cancel</button>
+      <button id="journal-delete-confirm-btn" type="button" class="btn btn-danger">Delete</button>
     </div>
   </div>
 </div>

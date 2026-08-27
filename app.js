@@ -15,6 +15,7 @@ const JOURNAL_FILENAME = "journal-entries.json";
 // is shared between them — unprefixed keys would collide.
 const TOKEN_STORAGE_KEY = "journal_app_google_access_token";
 const HAS_SIGNED_IN_KEY = "journal_app_google_has_signed_in";
+const LAST_JOURNAL_KEY = "journal_app_last_journal_id";
 
 const signinBtn = document.getElementById("signin-btn");
 const signoutBtn = document.getElementById("signout-btn");
@@ -38,11 +39,31 @@ const confirmDeletePanel = document.getElementById("confirm-delete-panel");
 const confirmDeleteCancelBtn = document.getElementById("confirm-delete-cancel-btn");
 const confirmDeleteBtn = document.getElementById("confirm-delete-btn");
 
+const journalTitleBtn = document.getElementById("journal-title-btn");
+const journalTitleText = document.getElementById("journal-title");
+const journalMenu = document.getElementById("journal-menu");
+const journalMenuList = document.getElementById("journal-menu-list");
+const journalNewBtn = document.getElementById("journal-new-btn");
+const journalOverlay = document.getElementById("journal-overlay");
+const journalNamePanel = document.getElementById("journal-name-panel");
+const journalNameTitle = document.getElementById("journal-name-title");
+const journalNameInput = document.getElementById("journal-name-input");
+const journalNameCancelBtn = document.getElementById("journal-name-cancel-btn");
+const journalNameSaveBtn = document.getElementById("journal-name-save-btn");
+const journalDeletePanel = document.getElementById("journal-delete-panel");
+const journalDeleteText = document.getElementById("journal-delete-text");
+const journalDeleteCancelBtn = document.getElementById("journal-delete-cancel-btn");
+const journalDeleteConfirmBtn = document.getElementById("journal-delete-confirm-btn");
+
 let tokenClient;
 let accessToken = null;
 let journalFileId = null;
-let entries = [];
+let journals = [];
+let activeJournalId = null;
 let editingTimestamp = null;
+let journalNameMode = null; // "create" | "rename"
+let journalNameTargetId = null;
+let journalDeleteTargetId = null;
 
 function loadStoredToken() {
   const raw = localStorage.getItem(TOKEN_STORAGE_KEY);
@@ -68,12 +89,17 @@ function setSignedInUI(signedIn) {
   settingsBtn.classList.toggle("hidden", !signedIn);
   journalSection.classList.toggle("hidden", !signedIn);
   fab.classList.toggle("hidden", !signedIn);
+  journalTitleBtn.disabled = !signedIn;
   authStatus.textContent = "Sign in to view your journal";
   if (!signedIn) {
     closeSettingsMenu();
+    closeJournalMenu();
+    closeJournalOverlay();
     closeEditor();
-    entries = [];
+    journals = [];
+    activeJournalId = null;
     journalFileId = null;
+    journalTitleText.textContent = "Journal";
     entriesList.innerHTML = "";
     emptyState.classList.add("hidden");
     appStatus.textContent = "";
@@ -85,6 +111,11 @@ function closeSettingsMenu() {
   settingsBtn.setAttribute("aria-expanded", "false");
 }
 
+function closeJournalMenu() {
+  journalMenu.classList.add("hidden");
+  journalTitleBtn.setAttribute("aria-expanded", "false");
+}
+
 function handleTokenResponse(response) {
   if (response.error) {
     console.warn("Google token request did not complete:", response.error);
@@ -94,7 +125,7 @@ function handleTokenResponse(response) {
   accessToken = response.access_token;
   storeToken(accessToken, response.expires_in);
   setSignedInUI(true);
-  initJournal();
+  initJournals();
 }
 
 window.addEventListener("load", () => {
@@ -117,7 +148,7 @@ window.addEventListener("load", () => {
   if (cached) {
     accessToken = cached;
     setSignedInUI(true);
-    initJournal();
+    initJournals();
   } else if (localStorage.getItem(HAS_SIGNED_IN_KEY) === "true") {
     // Silent re-auth attempt — succeeds if the browser still has an active
     // Google session (auth persistence plan, option 1).
@@ -142,6 +173,7 @@ signoutBtn.addEventListener("click", () => {
 settingsBtn.addEventListener("click", (e) => {
   e.stopPropagation();
   const isOpen = !settingsMenu.classList.contains("hidden");
+  closeJournalMenu();
   if (isOpen) {
     closeSettingsMenu();
   } else {
@@ -150,17 +182,41 @@ settingsBtn.addEventListener("click", (e) => {
   }
 });
 
+journalTitleBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const isOpen = !journalMenu.classList.contains("hidden");
+  closeSettingsMenu();
+  if (isOpen) {
+    closeJournalMenu();
+  } else {
+    journalMenu.classList.remove("hidden");
+    journalTitleBtn.setAttribute("aria-expanded", "true");
+  }
+});
+
 document.addEventListener("click", (e) => {
   if (!settingsMenu.classList.contains("hidden") && !e.target.closest(".settings")) {
     closeSettingsMenu();
   }
+  if (!journalMenu.classList.contains("hidden") && !e.target.closest(".journal-switcher")) {
+    closeJournalMenu();
+  }
 });
 
 // ---- Drive-backed journal storage ----
-// Entries live in a single JSON file in the user's Drive, as an array of
-// {timestamp, text} objects. drive.file scope means files.list only ever
-// sees files this app created, so the query below can't collide with
-// unrelated files of the same name elsewhere in the user's Drive.
+// Journals live in a single JSON file in the user's Drive, shaped as
+// { journals: [{id, name, entries: [{timestamp, text}]}] }. drive.file scope
+// means files.list only ever sees files this app created, so the query below
+// can't collide with unrelated files of the same name elsewhere in the
+// user's Drive.
+
+function generateJournalId() {
+  return crypto.randomUUID();
+}
+
+function getActiveJournal() {
+  return journals.find((j) => j.id === activeJournalId) || journals[0];
+}
 
 async function driveApiFetch(url, options = {}) {
   const res = await fetch(url, {
@@ -181,6 +237,7 @@ async function findJournalFileId() {
 }
 
 async function createJournalFile() {
+  const defaultJournals = [{ id: generateJournalId(), name: "Journal", entries: [] }];
   const boundary = "journal_app_boundary";
   const metadata = { name: JOURNAL_FILENAME, mimeType: "application/json" };
   const body =
@@ -189,7 +246,7 @@ async function createJournalFile() {
     `${JSON.stringify(metadata)}\r\n` +
     `--${boundary}\r\n` +
     `Content-Type: application/json\r\n\r\n` +
-    `${JSON.stringify([])}\r\n` +
+    `${JSON.stringify({ journals: defaultJournals })}\r\n` +
     `--${boundary}--`;
 
   const res = await driveApiFetch(
@@ -201,40 +258,68 @@ async function createJournalFile() {
     }
   );
   const data = await res.json();
-  return data.id;
+  return { fileId: data.id, journals: defaultJournals };
 }
 
-async function loadEntriesFromDrive(fileId) {
+async function loadJournalsFromDrive(fileId) {
   const res = await driveApiFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
   const text = await res.text();
-  if (!text.trim()) return [];
+
+  let parsed;
   try {
-    return JSON.parse(text);
+    parsed = text.trim() ? JSON.parse(text) : null;
   } catch {
-    return [];
+    parsed = null;
   }
+
+  if (Array.isArray(parsed)) {
+    return {
+      journals: [{ id: generateJournalId(), name: "Journal", entries: parsed }],
+      migrated: true,
+    };
+  }
+  if (parsed && Array.isArray(parsed.journals) && parsed.journals.length) {
+    return { journals: parsed.journals, migrated: false };
+  }
+  return {
+    journals: [{ id: generateJournalId(), name: "Journal", entries: [] }],
+    migrated: true,
+  };
 }
 
-async function saveEntriesToDrive(fileId, entriesToSave) {
+async function saveJournalsToDrive(fileId, journalsToSave) {
   await driveApiFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(entriesToSave),
+    body: JSON.stringify({ journals: journalsToSave }),
   });
 }
 
-async function initJournal() {
+function resolveActiveJournalId() {
+  const stored = localStorage.getItem(LAST_JOURNAL_KEY);
+  if (stored && journals.some((j) => j.id === stored)) return stored;
+  return journals[0].id;
+}
+
+async function initJournals() {
   appStatus.textContent = "Loading journal…";
   try {
     journalFileId = await findJournalFileId();
+    let migrated = false;
     if (!journalFileId) {
-      journalFileId = await createJournalFile();
-      entries = [];
+      const created = await createJournalFile();
+      journalFileId = created.fileId;
+      journals = created.journals;
     } else {
-      entries = await loadEntriesFromDrive(journalFileId);
+      const loaded = await loadJournalsFromDrive(journalFileId);
+      journals = loaded.journals;
+      migrated = loaded.migrated;
     }
+    activeJournalId = resolveActiveJournalId();
     appStatus.textContent = "";
-    renderEntries();
+    renderJournalMenu();
+    renderActiveJournal();
+    if (migrated) await persistJournals();
   } catch (err) {
     console.error(err);
     appStatus.textContent = "Could not load journal from Drive";
@@ -246,8 +331,130 @@ function formatTimestamp(iso) {
   return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
+function renderActiveJournal() {
+  const journal = getActiveJournal();
+  journalTitleText.textContent = journal.name;
+  renderEntries();
+}
+
+function setActiveJournal(id) {
+  activeJournalId = id;
+  localStorage.setItem(LAST_JOURNAL_KEY, id);
+  renderActiveJournal();
+  renderJournalMenu();
+  closeJournalMenu();
+}
+
+function renderJournalMenu() {
+  journalMenuList.innerHTML = "";
+  for (const journal of journals) {
+    const row = document.createElement("div");
+    row.className = "journal-menu-row";
+
+    const nameBtn = document.createElement("button");
+    nameBtn.type = "button";
+    nameBtn.className = "journal-menu-name" + (journal.id === activeJournalId ? " active" : "");
+    nameBtn.textContent = journal.name;
+    nameBtn.addEventListener("click", () => setActiveJournal(journal.id));
+    row.appendChild(nameBtn);
+
+    const renameJournalBtn = document.createElement("button");
+    renameJournalBtn.type = "button";
+    renameJournalBtn.className = "icon-btn small";
+    renameJournalBtn.setAttribute("aria-label", `Rename ${journal.name}`);
+    renameJournalBtn.textContent = "✎";
+    renameJournalBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openJournalNamePanel("rename", journal);
+    });
+    row.appendChild(renameJournalBtn);
+
+    const deleteJournalBtn = document.createElement("button");
+    deleteJournalBtn.type = "button";
+    deleteJournalBtn.className = "icon-btn small danger";
+    deleteJournalBtn.setAttribute("aria-label", `Delete ${journal.name}`);
+    deleteJournalBtn.textContent = "\u{1F5D1}";
+    deleteJournalBtn.disabled = journals.length <= 1;
+    deleteJournalBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openJournalDeletePanel(journal);
+    });
+    row.appendChild(deleteJournalBtn);
+
+    journalMenuList.appendChild(row);
+  }
+}
+
+function openJournalNamePanel(mode, journal) {
+  journalNameMode = mode;
+  journalNameTargetId = journal ? journal.id : null;
+  journalNameTitle.textContent = mode === "rename" ? "Rename journal" : "New journal";
+  journalNameInput.value = mode === "rename" ? journal.name : "";
+  journalNamePanel.classList.remove("hidden");
+  journalDeletePanel.classList.add("hidden");
+  journalOverlay.classList.remove("hidden");
+  closeJournalMenu();
+  journalNameInput.focus();
+}
+
+function openJournalDeletePanel(journal) {
+  journalDeleteTargetId = journal.id;
+  journalDeleteText.textContent = `Delete "${journal.name}"? This can't be undone.`;
+  journalDeletePanel.classList.remove("hidden");
+  journalNamePanel.classList.add("hidden");
+  journalOverlay.classList.remove("hidden");
+  closeJournalMenu();
+}
+
+function closeJournalOverlay() {
+  journalOverlay.classList.add("hidden");
+  journalNamePanel.classList.remove("hidden");
+  journalDeletePanel.classList.add("hidden");
+  journalNameMode = null;
+  journalNameTargetId = null;
+  journalDeleteTargetId = null;
+  journalNameInput.value = "";
+}
+
+journalNewBtn.addEventListener("click", () => openJournalNamePanel("create"));
+
+journalNameCancelBtn.addEventListener("click", closeJournalOverlay);
+journalDeleteCancelBtn.addEventListener("click", closeJournalOverlay);
+
+journalNameSaveBtn.addEventListener("click", async () => {
+  const name = journalNameInput.value.trim();
+  if (!name) return;
+
+  if (journalNameMode === "create") {
+    const newJournal = { id: generateJournalId(), name, entries: [] };
+    journals.push(newJournal);
+    closeJournalOverlay();
+    setActiveJournal(newJournal.id);
+  } else {
+    const journal = journals.find((j) => j.id === journalNameTargetId);
+    if (journal) journal.name = name;
+    closeJournalOverlay();
+    renderJournalMenu();
+    if (journal && journal.id === activeJournalId) renderActiveJournal();
+  }
+  await persistJournals();
+});
+
+journalDeleteConfirmBtn.addEventListener("click", async () => {
+  const targetId = journalDeleteTargetId;
+  journals = journals.filter((j) => j.id !== targetId);
+  closeJournalOverlay();
+  if (targetId === activeJournalId) {
+    setActiveJournal(journals[0].id);
+  } else {
+    renderJournalMenu();
+  }
+  await persistJournals();
+});
+
 function renderEntries() {
   entriesList.innerHTML = "";
+  const entries = getActiveJournal().entries;
   const sorted = [...entries].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   for (const entry of sorted) {
     const li = document.createElement("li");
@@ -291,16 +498,23 @@ fab.addEventListener("click", () => openEditor(null));
 entriesList.addEventListener("click", (e) => {
   const li = e.target.closest(".entry");
   if (!li) return;
-  const entry = entries.find((en) => en.timestamp === li.dataset.timestamp);
+  const entry = getActiveJournal().entries.find((en) => en.timestamp === li.dataset.timestamp);
   if (entry) openEditor(entry);
 });
 
 editorCancelBtn.addEventListener("click", closeEditor);
 
-async function persistEntries() {
+let pendingPersist = Promise.resolve();
+
+function persistJournals() {
+  pendingPersist = pendingPersist.then(runPersist, runPersist);
+  return pendingPersist;
+}
+
+async function runPersist() {
   appStatus.textContent = "Saving…";
   try {
-    await saveEntriesToDrive(journalFileId, entries);
+    await saveJournalsToDrive(journalFileId, journals);
     appStatus.textContent = "";
   } catch (err) {
     console.error(err);
@@ -315,16 +529,17 @@ editorDoneBtn.addEventListener("click", async () => {
     return;
   }
 
+  const journal = getActiveJournal();
   if (editingTimestamp) {
-    const entry = entries.find((en) => en.timestamp === editingTimestamp);
+    const entry = journal.entries.find((en) => en.timestamp === editingTimestamp);
     if (entry) entry.text = text;
   } else {
-    entries.push({ timestamp: new Date().toISOString(), text });
+    journal.entries.push({ timestamp: new Date().toISOString(), text });
   }
 
   closeEditor();
   renderEntries();
-  await persistEntries();
+  await persistJournals();
 });
 
 deleteBtn.addEventListener("click", () => {
@@ -338,10 +553,11 @@ confirmDeleteCancelBtn.addEventListener("click", () => {
 });
 
 confirmDeleteBtn.addEventListener("click", async () => {
-  entries = entries.filter((en) => en.timestamp !== editingTimestamp);
+  const journal = getActiveJournal();
+  journal.entries = journal.entries.filter((en) => en.timestamp !== editingTimestamp);
   closeEditor();
   renderEntries();
-  await persistEntries();
+  await persistJournals();
 });
 
 // Service worker registration — enables installability + offline shell.
