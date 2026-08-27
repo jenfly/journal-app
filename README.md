@@ -29,6 +29,11 @@ The app needs an OAuth client ID to sign in:
 
 `app.js` currently reuses the OAuth client created for `pwa-starter`, since Authorized JavaScript origins are matched by origin, not path, and both apps share the `https://jenfly.github.io` origin. Create a separate client here instead if that reuse becomes undesirable.
 
+## Backups
+
+A local script keeps a rolling 31-day backup of the journal data outside
+Drive — see [`backup/SETUP.md`](backup/SETUP.md) for setup.
+
 ## Deployment
 
 Deployed via GitHub Pages from the `main` branch.
