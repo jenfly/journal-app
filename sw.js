@@ -1,4 +1,4 @@
-const CACHE_NAME = "journal-app-v9";
+const CACHE_NAME = "journal-app-v10";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -10,8 +10,18 @@ const APP_SHELL = [
 ];
 
 self.addEventListener("install", (event) => {
+  // cache.addAll() would fetch() with default HTTP caching semantics, so a
+  // still-fresh browser cache entry (GitHub Pages sends max-age=600) could
+  // get baked into this new CACHE_NAME instead of the actual latest file —
+  // {cache: "reload"} forces each request past the browser's HTTP cache.
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
+    caches.open(CACHE_NAME).then((cache) =>
+      Promise.all(
+        APP_SHELL.map((url) =>
+          fetch(url, { cache: "reload" }).then((res) => cache.put(url, res))
+        )
+      )
+    )
   );
   self.skipWaiting();
 });
