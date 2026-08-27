@@ -72,23 +72,54 @@ Confirm a new `journal-entries-<today>.json` shows up in
 `~/Dropbox/Backups/JournalBackups/`, and check `~/.config/journal-backup/backup.log`
 for a success line.
 
-## 5. Add the daily cron job
+## 5. Add the daily systemd user timer
+
+Using a systemd user timer instead of cron, specifically because cron
+doesn't wake a sleeping machine and doesn't catch up on missed runs — if the
+laptop is asleep at 3 AM, a cron job just silently never fires that day. A
+systemd timer with `Persistent=true` remembers the last run time and fires
+shortly after you wake/log back in if the scheduled time was missed.
+
+Create `~/.config/systemd/user/journal-backup.service`:
+
+```ini
+[Unit]
+Description=Daily backup of journal Drive data
+
+[Service]
+Type=oneshot
+ExecStart=/home/jennifer/Projects/journal-app/backup/venv/bin/python3 /home/jennifer/Projects/journal-app/backup/journal_backup.py
+```
+
+Create `~/.config/systemd/user/journal-backup.timer`:
+
+```ini
+[Unit]
+Description=Run journal-backup daily, catching up after sleep/missed runs
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+Then enable it:
 
 ```
-crontab -e
+systemctl --user daemon-reload
+systemctl --user enable --now journal-backup.timer
 ```
 
-Add (confirm your UID with `id -u` first — this assumes 1000, the usual
-first-user UID on Mint):
+Runs daily at 3:00 AM, or as soon as possible after if that time was missed.
+Unlike cron, a user systemd service normally already has access to your
+desktop session (no `DISPLAY`/`DBUS_SESSION_BUS_ADDRESS` plumbing needed) so
+`notify-send` failure alerts just work; the log file remains the fallback if
+a run happens while you're logged out.
 
-```
-0 3 * * * DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus /home/jennifer/Projects/journal-app/backup/venv/bin/python3 /home/jennifer/Projects/journal-app/backup/journal_backup.py >> /home/jennifer/.config/journal-backup/backup.log 2>&1
-```
-
-Runs daily at 3:00 AM. The `DISPLAY`/`DBUS_SESSION_BUS_ADDRESS` vars let the
-script's failure notifications (`notify-send`) reach your desktop session,
-since cron jobs don't inherit it by default — if a run fails and you're not
-logged in, the log file is the reliable fallback.
+Check status any time with `systemctl --user list-timers journal-backup.timer`
+or `systemctl --user status journal-backup.service`.
 
 ## Restoring a snapshot
 
