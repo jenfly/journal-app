@@ -12,11 +12,12 @@ import os
 import re
 import subprocess
 import sys
+import time
 from datetime import date
 from pathlib import Path
 
 import requests
-from google.auth.exceptions import RefreshError
+from google.auth.exceptions import RefreshError, TransportError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -31,6 +32,13 @@ JOURNAL_FILENAME = "journal-entries.json"
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 RETENTION_DAYS = 31
 FILENAME_RE = re.compile(r"^journal-entries-(\d{4}-\d{2}-\d{2})\.json$")
+
+# The systemd timer's Persistent=true catch-up fires the moment the session
+# wakes from sleep, which can race Wi-Fi reassociation/DHCP/DNS by a minute
+# or more. Retry network errors with backoff instead of failing on the first
+# attempt (~16 min total across the last two runs before giving up).
+NETWORK_RETRY_DELAYS_SEC = [30, 60, 120, 240, 480]
+NETWORK_ERRORS = (requests.exceptions.ConnectionError, TransportError)
 
 
 class BackupError(Exception):
@@ -165,17 +173,30 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(message)s",
     )
 
-    try:
-        creds = load_credentials()
-        file_id = find_journal_file_id(creds)
-        content = download_file_content(creds, file_id)
-        snapshot_path = write_snapshot(content, date.today())
-        purge_old_snapshots(date.today())
-        logging.info(f"Backup OK: {snapshot_path}")
-    except BackupError as e:
-        fatal(str(e), e)
-    except Exception as e:
-        fatal(f"Unexpected error: {e}", e)
+    for attempt, delay in enumerate([0, *NETWORK_RETRY_DELAYS_SEC]):
+        if delay:
+            logging.warning(f"Network error, retrying in {delay}s (attempt {attempt + 1})")
+            time.sleep(delay)
+        try:
+            creds = load_credentials()
+            file_id = find_journal_file_id(creds)
+            content = download_file_content(creds, file_id)
+            snapshot_path = write_snapshot(content, date.today())
+            purge_old_snapshots(date.today())
+            logging.info(f"Backup OK: {snapshot_path}")
+            return
+        except BackupError as e:
+            fatal(str(e), e)
+        except NETWORK_ERRORS as e:
+            last_network_error = e
+        except Exception as e:
+            fatal(f"Unexpected error: {e}", e)
+
+    fatal(
+        f"Backup failed after {len(NETWORK_RETRY_DELAYS_SEC) + 1} attempts "
+        "due to network errors (is the machine online?)",
+        last_network_error,
+    )
 
 
 if __name__ == "__main__":

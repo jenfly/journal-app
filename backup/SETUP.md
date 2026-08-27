@@ -80,6 +80,17 @@ laptop is asleep at 3 AM, a cron job just silently never fires that day. A
 systemd timer with `Persistent=true` remembers the last run time and fires
 shortly after you wake/log back in if the scheduled time was missed.
 
+If the machine is reliably asleep at 3 AM (the common case), every run
+happens via this wake-triggered catch-up, not the scheduled time — which
+means it can race Wi-Fi reassociation/DHCP/DNS right after resume and hit a
+`NameResolutionError` before the network is back. `journal_backup.py`
+retries network errors specifically (not auth/API errors) with backoff —
+30s/60s/120s/240s/480s, ~16 minutes total — before giving up and notifying.
+`TimeoutStartSec` isn't set in the unit below because systemd's default for
+a `Type=oneshot` service without `RemainAfterExit` is already unlimited
+(confirm with `systemctl --user show journal-backup.service -p
+TimeoutStartUSec`), so the retry sleeps won't get killed mid-run.
+
 Create `~/.config/systemd/user/journal-backup.service`:
 
 ```ini
