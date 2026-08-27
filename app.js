@@ -329,7 +329,14 @@ async function initJournals() {
 
 function formatTimestamp(iso) {
   const d = new Date(iso);
-  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  let hours = d.getHours() % 12;
+  if (hours === 0) hours = 12;
+  const ampm = d.getHours() >= 12 ? "pm" : "am";
+  return `${year}-${month}-${day} ${hours}:${minutes}${ampm}`;
 }
 
 function renderActiveJournal() {
