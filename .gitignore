@@ -1,6 +1,1 @@
 notes/
-
-backup/venv/
-backup/__pycache__/
-*.token.json
-client_secret*.json

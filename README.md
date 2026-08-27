@@ -32,7 +32,8 @@ The app needs an OAuth client ID to sign in:
 ## Backups
 
 A local script keeps a rolling 31-day backup of the journal data outside
-Drive — see [`backup/SETUP.md`](backup/SETUP.md) for setup.
+Drive — see [jenfly/google-backups](https://github.com/jenfly/google-backups)
+for the script and setup.
 
 ## Deployment
 
