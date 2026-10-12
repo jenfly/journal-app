@@ -30,7 +30,21 @@ const importBtn = document.getElementById("import-btn");
 const appStatus = document.getElementById("status");
 const saveErrorEl = document.getElementById("save-error");
 const settingsBtn = document.getElementById("settings-btn");
-const settingsMenu = document.getElementById("settings-menu");
+const settingsOverlay = document.getElementById("settings-overlay");
+const settingsCloseBtn = document.getElementById("settings-close-btn");
+const syncToast = document.getElementById("sync-toast");
+const syncSignedOut = document.getElementById("sync-signed-out");
+const syncSignedIn = document.getElementById("sync-signed-in");
+const syncChoose = document.getElementById("sync-choose");
+const syncEmailEl = document.getElementById("sync-email");
+const syncStatusText = document.getElementById("sync-status-text");
+const syncSigninBtn = document.getElementById("sync-signin-btn");
+const syncNowBtn = document.getElementById("sync-now-btn");
+const syncSignoutBtn = document.getElementById("sync-signout-btn");
+const syncChooseText = document.getElementById("sync-choose-text");
+const syncChooseMergeBtn = document.getElementById("sync-choose-merge-btn");
+const syncChooseCloudBtn = document.getElementById("sync-choose-cloud-btn");
+const syncChooseDeviceBtn = document.getElementById("sync-choose-device-btn");
 const backupBtn = document.getElementById("backup-btn");
 const backupStatus = document.getElementById("backup-status");
 const signoutBtn = document.getElementById("signout-btn");
@@ -96,8 +110,14 @@ function storeToken(token, expiresInSeconds) {
   localStorage.setItem(HAS_SIGNED_IN_KEY, "true");
 }
 
-function closeSettingsMenu() {
-  settingsMenu.classList.add("hidden");
+function openSettingsPanel() {
+  settingsOverlay.classList.remove("hidden");
+  settingsBtn.setAttribute("aria-expanded", "true");
+  renderSyncUI();
+}
+
+function closeSettingsPanel() {
+  settingsOverlay.classList.add("hidden");
   settingsBtn.setAttribute("aria-expanded", "false");
 }
 
@@ -163,25 +183,19 @@ signoutBtn.addEventListener("click", () => {
   accessToken = null;
   localStorage.removeItem(TOKEN_STORAGE_KEY);
   localStorage.removeItem(HAS_SIGNED_IN_KEY);
-  closeSettingsMenu();
 });
 
 settingsBtn.addEventListener("click", (e) => {
   e.stopPropagation();
-  const isOpen = !settingsMenu.classList.contains("hidden");
   closeJournalMenu();
-  if (isOpen) {
-    closeSettingsMenu();
-  } else {
-    settingsMenu.classList.remove("hidden");
-    settingsBtn.setAttribute("aria-expanded", "true");
-  }
+  openSettingsPanel();
 });
+
+settingsCloseBtn.addEventListener("click", closeSettingsPanel);
 
 journalTitleBtn.addEventListener("click", (e) => {
   e.stopPropagation();
   const isOpen = !journalMenu.classList.contains("hidden");
-  closeSettingsMenu();
   if (isOpen) {
     closeJournalMenu();
   } else {
@@ -191,9 +205,6 @@ journalTitleBtn.addEventListener("click", (e) => {
 });
 
 document.addEventListener("click", (e) => {
-  if (!settingsMenu.classList.contains("hidden") && !e.target.closest(".settings")) {
-    closeSettingsMenu();
-  }
   if (!journalMenu.classList.contains("hidden") && !e.target.closest(".journal-switcher")) {
     closeJournalMenu();
   }
@@ -396,7 +407,116 @@ function enterApp() {
   renderJournalMenu();
   renderActiveJournal();
   renderBackupStatus();
+  initSync();
 }
+
+// ---- Supabase sync wiring (sync.js) ----
+// Entries are irreplaceable, so unlike the sibling apps this one never does a blind
+// last-write-wins replace when both sides changed — see logic.js's mergeDocs and
+// syncPlan's 'merge' outcome, which sync.js always takes instead.
+
+function initSync() {
+  if (!window.Sync) return; // sync.js failed to load; the app still works local-only
+  window.Sync.init({
+    key: CACHE_KEY,
+    getState: () => ({ journals }),
+    applyState,
+    busy,
+    onChange: renderSyncUIIfRelevant,
+    onError: (msg) => showSyncToast(msg, true),
+    onPulled: () => showSyncToast("Updated from another device.", false),
+    onMerged: (stats) => {
+      let msg = "Merged changes from another device.";
+      if (stats && stats.entryConflicts > 0) {
+        msg += ` ${stats.entryConflicts} entr${stats.entryConflicts === 1 ? "y" : "ies"} edited on both devices — the newer edit was kept.`;
+      }
+      showSyncToast(msg, false);
+    },
+  });
+}
+
+// sync.js already validates the remote doc (validDoc) before ever calling this, both for a
+// plain pull and for a merge result — no need to re-validate here.
+function applyState(remoteDoc) {
+  journals = JSON.parse(JSON.stringify(remoteDoc.journals));
+  if (!journals.some((j) => j.id === activeJournalId)) activeJournalId = journals[0].id;
+  saveLocal();
+  renderJournalMenu();
+  renderActiveJournal();
+}
+
+function showSyncToast(text, isError) {
+  syncToast.textContent = text;
+  syncToast.classList.toggle("hidden", !text);
+  syncToast.classList.toggle("error", !!isError);
+}
+
+function formatRelativeTime(ms) {
+  const mins = Math.round(Math.max(0, Date.now() - ms) / 60000);
+  if (mins < 1) return "just now";
+  if (mins === 1) return "1 min ago";
+  if (mins < 60) return mins + " min ago";
+  const hours = Math.round(mins / 60);
+  if (hours === 1) return "1 hour ago";
+  if (hours < 24) return hours + " hours ago";
+  const days = Math.round(hours / 24);
+  return days === 1 ? "1 day ago" : days + " days ago";
+}
+
+function syncStatusLabel(st) {
+  if (st.phase === "syncing" || st.phase === "signing-in") return "Syncing…";
+  if (st.phase === "offline") return "Offline — will sync when back online";
+  if (st.phase === "error") return "Sync error" + (st.error ? ": " + st.error : "") + " — will retry";
+  if (st.dirty) return "Changes pending…";
+  if (st.syncedAt) return "Synced " + formatRelativeTime(st.syncedAt);
+  return "Not yet synced";
+}
+
+function renderSyncUI() {
+  if (!window.Sync) {
+    syncSignedOut.classList.remove("hidden");
+    syncSignedIn.classList.add("hidden");
+    syncChoose.classList.add("hidden");
+    return;
+  }
+  const st = window.Sync.status();
+
+  syncChoose.classList.toggle("hidden", st.phase !== "choose");
+  if (st.phase === "choose") {
+    syncSignedOut.classList.add("hidden");
+    syncSignedIn.classList.add("hidden");
+    const c = st.choice;
+    syncChooseText.textContent = c
+      ? `This device has ${c.device.journals} journal(s) and ${c.device.entries} entries. ` +
+        `The cloud has ${c.cloud.journals} journal(s) and ${c.cloud.entries} entries. ` +
+        `Merge both to keep everything, or replace one side.`
+      : "";
+    return;
+  }
+
+  syncSignedOut.classList.toggle("hidden", st.signedIn);
+  syncSignedIn.classList.toggle("hidden", !st.signedIn);
+  if (st.signedIn) {
+    syncEmailEl.textContent = st.email;
+    syncStatusText.textContent = syncStatusLabel(st);
+  }
+}
+
+// Re-render the sync section only while the settings panel is open; if a first-link choice
+// just arrived and nothing else is mid-edit, open the panel so the user sees it.
+function renderSyncUIIfRelevant(status) {
+  if (!settingsOverlay.classList.contains("hidden")) renderSyncUI();
+  if (status.phase === "choose" && settingsOverlay.classList.contains("hidden") && !busy()) {
+    openSettingsPanel();
+  }
+}
+
+syncSigninBtn.addEventListener("click", () => window.Sync && window.Sync.signIn());
+syncSignoutBtn.addEventListener("click", () => window.Sync && window.Sync.signOut());
+syncNowBtn.addEventListener("click", () => window.Sync && window.Sync.syncNow());
+syncChooseMergeBtn.addEventListener("click", () => window.Sync && window.Sync.resolveChoice("merge"));
+syncChooseCloudBtn.addEventListener("click", () => window.Sync && window.Sync.resolveChoice("cloud"));
+syncChooseDeviceBtn.addEventListener("click", () => window.Sync && window.Sync.resolveChoice("device"));
 
 // The existing-user upgrade path: this device has signed in to Drive before (so it may hold
 // real entries there) but has no local cache yet. Tries a silent token first; if that fails,
