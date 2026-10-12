@@ -1,0 +1,11 @@
+# Local scratch / working files — not part of the shipped app
+backup/
+notes/
+
+# Python virtual environments
+venv/
+.venv/
+__pycache__/
+
+# OS files
+.DS_Store
