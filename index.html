@@ -40,11 +40,12 @@
     </div>
   </div>
   <p id="status" class="status" aria-live="polite"></p>
+  <p id="save-error" class="save-error hidden" role="alert">Couldn't save on this device — this change may be lost when you close the app.</p>
 </header>
 
-<section id="auth-section" class="auth-section">
-  <p id="auth-status" class="status" aria-live="polite">Not signed in</p>
-  <button id="signin-btn" type="button" class="btn">Sign in with Google</button>
+<section id="import-section" class="import-section hidden">
+  <p>We found a previous sign-in on this device. Import your journal to continue.</p>
+  <button id="import-btn" type="button" class="btn">Import your journal from Google Drive</button>
 </section>
 
 <main id="journal-section" class="hidden">
@@ -100,6 +101,7 @@
 </div>
 
 <script src="https://accounts.google.com/gsi/client" defer></script>
+<script src="logic.js" defer></script>
 <script src="app.js" defer></script>
 </body>
 </html>

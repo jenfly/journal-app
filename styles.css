@@ -205,6 +205,16 @@ body {
   color: var(--muted);
 }
 
+.save-error {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
 main {
   max-width: 480px;
   margin: 0 auto;
@@ -351,10 +361,15 @@ main {
   display: none;
 }
 
-.auth-section {
+.import-section {
   max-width: 480px;
   margin: 0 auto;
   padding: 0 1rem;
+}
+
+.import-section p {
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 .btn {

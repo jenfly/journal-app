@@ -1,4 +1,7 @@
 // ---- Google Sign-In (Google Identity Services) ----
+// Drive is no longer required for the app to open or work (see CLAUDE.md / the Supabase sync
+// migration). It's used only for the one-time import of pre-existing Drive data on an upgraded
+// device, and for the manual "Back up to Drive" action — there is no sign-in wall.
 // The client ID is not a secret in this flow — there's no server to hold a
 // client secret, so Google expects it embedded in front-end code. Access is
 // actually restricted via the Authorized JavaScript origins configured for
@@ -17,13 +20,17 @@ const TOKEN_STORAGE_KEY = "journal_app_google_access_token";
 const HAS_SIGNED_IN_KEY = "journal_app_google_has_signed_in";
 const LAST_JOURNAL_KEY = "journal_app_last_journal_id";
 
-const signinBtn = document.getElementById("signin-btn");
-const signoutBtn = document.getElementById("signout-btn");
-const authSection = document.getElementById("auth-section");
-const authStatus = document.getElementById("auth-status");
+// ---- Local cache: the always-used local copy (see logic.js for validDoc/isPristine/etc.) ----
+const CACHE_KEY = "journal_app_v1";
+const IMPORTED_KEY = "journal_app_v1:imported";
+
+const importSection = document.getElementById("import-section");
+const importBtn = document.getElementById("import-btn");
 const appStatus = document.getElementById("status");
+const saveErrorEl = document.getElementById("save-error");
 const settingsBtn = document.getElementById("settings-btn");
 const settingsMenu = document.getElementById("settings-menu");
+const signoutBtn = document.getElementById("signout-btn");
 const journalSection = document.getElementById("journal-section");
 const entriesList = document.getElementById("entries");
 const emptyState = document.getElementById("empty");
@@ -58,13 +65,14 @@ const journalDeleteConfirmBtn = document.getElementById("journal-delete-confirm-
 
 let tokenClient;
 let accessToken = null;
-let journalFileId = null;
 let journals = [];
 let activeJournalId = null;
 let editingTimestamp = null;
 let journalNameMode = null; // "create" | "rename"
 let journalNameTargetId = null;
 let journalDeleteTargetId = null;
+let pendingTokenResolve = null;
+let pendingTokenReject = null;
 
 function loadStoredToken() {
   const raw = localStorage.getItem(TOKEN_STORAGE_KEY);
@@ -85,28 +93,6 @@ function storeToken(token, expiresInSeconds) {
   localStorage.setItem(HAS_SIGNED_IN_KEY, "true");
 }
 
-function setSignedInUI(signedIn) {
-  authSection.classList.toggle("hidden", signedIn);
-  settingsBtn.classList.toggle("hidden", !signedIn);
-  journalSection.classList.toggle("hidden", !signedIn);
-  fab.classList.toggle("hidden", !signedIn);
-  journalTitleBtn.disabled = !signedIn;
-  authStatus.textContent = "Sign in to view your journal";
-  if (!signedIn) {
-    closeSettingsMenu();
-    closeJournalMenu();
-    closeJournalOverlay();
-    closeEditor();
-    journals = [];
-    activeJournalId = null;
-    journalFileId = null;
-    journalTitleText.textContent = "Journal";
-    entriesList.innerHTML = "";
-    emptyState.classList.add("hidden");
-    appStatus.textContent = "";
-  }
-}
-
 function closeSettingsMenu() {
   settingsMenu.classList.add("hidden");
   settingsBtn.setAttribute("aria-expanded", "false");
@@ -117,21 +103,36 @@ function closeJournalMenu() {
   journalTitleBtn.setAttribute("aria-expanded", "false");
 }
 
+// handleTokenResponse / error_callback resolve or reject whichever request is currently
+// pending — requestDriveToken below promisifies the single callback GIS gives us.
 function handleTokenResponse(response) {
   if (response.error) {
     console.warn("Google token request did not complete:", response.error);
-    setSignedInUI(false);
+    if (pendingTokenReject) pendingTokenReject(new Error(response.error));
+    pendingTokenResolve = pendingTokenReject = null;
     return;
   }
   accessToken = response.access_token;
   storeToken(accessToken, response.expires_in);
-  setSignedInUI(true);
-  initJournals();
+  if (pendingTokenResolve) pendingTokenResolve(accessToken);
+  pendingTokenResolve = pendingTokenReject = null;
+}
+
+function requestDriveToken(interactive) {
+  return new Promise((resolve, reject) => {
+    if (!tokenClient) {
+      reject(new Error("Google Sign-In unavailable"));
+      return;
+    }
+    pendingTokenResolve = resolve;
+    pendingTokenReject = reject;
+    tokenClient.requestAccessToken({ prompt: interactive ? "consent" : "none" });
+  });
 }
 
 window.addEventListener("load", () => {
   if (typeof google === "undefined" || !google.accounts) {
-    authStatus.textContent = "Google Sign-In failed to load";
+    console.warn("Google Sign-In failed to load — Drive import/backup unavailable, journal still works locally");
     return;
   }
 
@@ -141,24 +142,12 @@ window.addEventListener("load", () => {
     callback: handleTokenResponse,
     error_callback: (err) => {
       console.warn("Google auth error:", err);
-      setSignedInUI(false);
+      if (pendingTokenReject) pendingTokenReject(new Error((err && err.type) || "auth-error"));
+      pendingTokenResolve = pendingTokenReject = null;
     },
   });
 
-  const cached = loadStoredToken();
-  if (cached) {
-    accessToken = cached;
-    setSignedInUI(true);
-    initJournals();
-  } else if (localStorage.getItem(HAS_SIGNED_IN_KEY) === "true") {
-    // Silent re-auth attempt — succeeds if the browser still has an active
-    // Google session (auth persistence plan, option 1).
-    tokenClient.requestAccessToken({ prompt: "none" });
-  }
-});
-
-signinBtn.addEventListener("click", () => {
-  tokenClient.requestAccessToken({ prompt: "consent" });
+  accessToken = loadStoredToken();
 });
 
 signoutBtn.addEventListener("click", () => {
@@ -168,7 +157,7 @@ signoutBtn.addEventListener("click", () => {
   accessToken = null;
   localStorage.removeItem(TOKEN_STORAGE_KEY);
   localStorage.removeItem(HAS_SIGNED_IN_KEY);
-  setSignedInUI(false);
+  closeSettingsMenu();
 });
 
 settingsBtn.addEventListener("click", (e) => {
@@ -204,12 +193,12 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// ---- Drive-backed journal storage ----
-// Journals live in a single JSON file in the user's Drive, shaped as
-// { journals: [{id, name, entries: [{timestamp, text}]}] }. drive.file scope
-// means files.list only ever sees files this app created, so the query below
-// can't collide with unrelated files of the same name elsewhere in the
-// user's Drive.
+// ---- Drive-backed storage ----
+// Kept for two purposes only: the one-time import below, and a manual "Back up to Drive"
+// action (not yet built — see the Supabase sync handoff doc). Journals live in a single JSON
+// file in the user's Drive, shaped as { journals: [{id, name, entries: [{timestamp, text}]}] }.
+// drive.file scope means files.list only ever sees files this app created, so the query below
+// can't collide with unrelated files of the same name elsewhere in the user's Drive.
 
 function generateJournalId() {
   return crypto.randomUUID();
@@ -296,36 +285,158 @@ async function saveJournalsToDrive(fileId, journalsToSave) {
   });
 }
 
+// ---- Local cache: load/save, startup flow, one-time Drive import ----
+// loadLocal/saveLocal are the only read/write path for journals now. validDoc comes from
+// logic.js (loaded before this file — see index.html).
+
+function loadLocal() {
+  let raw;
+  try {
+    raw = localStorage.getItem(CACHE_KEY);
+  } catch {
+    return null;
+  }
+  if (!raw) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  return validDoc(parsed) ? parsed : null;
+}
+
+function setSaveError(show) {
+  saveErrorEl.classList.toggle("hidden", !show);
+}
+
+// Writes the doc to localStorage synchronously. Returns whether the write succeeded. A failed
+// write (quota, private mode) surfaces a persistent, visible error rather than failing silently
+// — the in-memory `journals` is left untouched either way, so nothing is lost this session.
+function saveLocal() {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ journals }));
+  } catch (err) {
+    console.error(err);
+    setSaveError(true);
+    return false;
+  }
+  setSaveError(false);
+  if (window.Sync) window.Sync.noteLocalChange();
+  return true;
+}
+
 function resolveActiveJournalId() {
   const stored = localStorage.getItem(LAST_JOURNAL_KEY);
   if (stored && journals.some((j) => j.id === stored)) return stored;
   return journals[0].id;
 }
 
-async function initJournals() {
-  appStatus.textContent = "Loading journal…";
+function showMainUI(show) {
+  journalSection.classList.toggle("hidden", !show);
+  fab.classList.toggle("hidden", !show);
+  settingsBtn.classList.toggle("hidden", !show);
+  journalTitleBtn.disabled = !show;
+}
+
+function startFresh() {
+  journals = [{ id: generateJournalId(), name: "Journal", entries: [] }];
+  activeJournalId = journals[0].id;
+  saveLocal();
+}
+
+function enterApp() {
+  activeJournalId = resolveActiveJournalId();
+  showMainUI(true);
+  renderJournalMenu();
+  renderActiveJournal();
+}
+
+// The existing-user upgrade path: this device has signed in to Drive before (so it may hold
+// real entries there) but has no local cache yet. Tries a silent token first; if that fails,
+// leaves the "Import your journal from Google Drive" button up for the user to tap. Never
+// writes the cache unless the imported doc validates, and never runs once `imported` is set.
+async function attemptImport(interactive) {
+  appStatus.textContent = interactive
+    ? "Importing your journal…"
+    : "Checking for a previous Google Drive backup…";
+  importBtn.classList.add("hidden");
   try {
-    journalFileId = await findJournalFileId();
-    let migrated = false;
-    if (!journalFileId) {
-      const created = await createJournalFile();
-      journalFileId = created.fileId;
-      journals = created.journals;
-    } else {
-      const loaded = await loadJournalsFromDrive(journalFileId);
-      journals = loaded.journals;
-      migrated = loaded.migrated;
+    await requestDriveToken(interactive);
+    const fileId = await findJournalFileId();
+    if (!fileId) {
+      // Signed in before, but no Drive file exists — nothing to import.
+      startFresh();
+      finishImport();
+      return;
     }
+    const loaded = await loadJournalsFromDrive(fileId);
+    const importedDoc = { journals: loaded.journals };
+    if (!validDoc(importedDoc)) throw new Error("Imported Drive data failed validation");
+    journals = importedDoc.journals;
     activeJournalId = resolveActiveJournalId();
-    appStatus.textContent = "";
-    renderJournalMenu();
-    renderActiveJournal();
-    if (migrated) await persistJournals();
+    saveLocal();
+    finishImport();
   } catch (err) {
     console.error(err);
-    appStatus.textContent = "Could not load journal from Drive";
+    appStatus.textContent = interactive
+      ? "Could not import — check your connection and try again."
+      : "We found a previous sign-in on this device. Import your journal to continue.";
+    importBtn.classList.remove("hidden");
   }
 }
+
+function finishImport() {
+  localStorage.setItem(IMPORTED_KEY, "true");
+  importSection.classList.add("hidden");
+  appStatus.textContent = "";
+  enterApp();
+}
+
+importBtn.addEventListener("click", () => attemptImport(true));
+
+async function initApp() {
+  const cached = loadLocal();
+  if (cached) {
+    journals = cached.journals;
+    enterApp();
+    return;
+  }
+
+  const hasSignedIn = localStorage.getItem(HAS_SIGNED_IN_KEY) === "true";
+  const alreadyImported = localStorage.getItem(IMPORTED_KEY) === "true";
+
+  if (hasSignedIn && !alreadyImported) {
+    importSection.classList.remove("hidden");
+    await attemptImport(false);
+    return;
+  }
+
+  startFresh();
+  enterApp();
+}
+
+window.addEventListener("load", initApp);
+
+// Two open tabs/windows (browser tab plus installed PWA) on the same cache: if the other one
+// changed it while this one is idle (and nothing here is mid-edit), pick up the new state
+// instead of silently overwriting it on this tab's next save.
+function busy() {
+  if (!editorOverlay.classList.contains("hidden")) return true;
+  if (!journalOverlay.classList.contains("hidden")) return true;
+  const active = document.activeElement;
+  return !!(active && (active.tagName === "TEXTAREA" || active.tagName === "INPUT"));
+}
+
+window.addEventListener("storage", (e) => {
+  if (e.key !== CACHE_KEY || busy()) return;
+  const cached = loadLocal();
+  if (!cached) return;
+  journals = cached.journals;
+  if (!journals.some((j) => j.id === activeJournalId)) activeJournalId = journals[0].id;
+  renderJournalMenu();
+  renderActiveJournal();
+});
 
 function formatTimestamp(iso) {
   const d = new Date(iso);
@@ -447,7 +558,7 @@ journalExportBtn.addEventListener("click", exportActiveJournal);
 journalNameCancelBtn.addEventListener("click", closeJournalOverlay);
 journalDeleteCancelBtn.addEventListener("click", closeJournalOverlay);
 
-journalNameSaveBtn.addEventListener("click", async () => {
+journalNameSaveBtn.addEventListener("click", () => {
   const name = journalNameInput.value.trim();
   if (!name) return;
 
@@ -463,10 +574,10 @@ journalNameSaveBtn.addEventListener("click", async () => {
     renderJournalMenu();
     if (journal && journal.id === activeJournalId) renderActiveJournal();
   }
-  await persistJournals();
+  saveLocal();
 });
 
-journalDeleteConfirmBtn.addEventListener("click", async () => {
+journalDeleteConfirmBtn.addEventListener("click", () => {
   const targetId = journalDeleteTargetId;
   journals = journals.filter((j) => j.id !== targetId);
   closeJournalOverlay();
@@ -475,7 +586,7 @@ journalDeleteConfirmBtn.addEventListener("click", async () => {
   } else {
     renderJournalMenu();
   }
-  await persistJournals();
+  saveLocal();
 });
 
 function renderEntries() {
@@ -530,25 +641,7 @@ entriesList.addEventListener("click", (e) => {
 
 editorCancelBtn.addEventListener("click", closeEditor);
 
-let pendingPersist = Promise.resolve();
-
-function persistJournals() {
-  pendingPersist = pendingPersist.then(runPersist, runPersist);
-  return pendingPersist;
-}
-
-async function runPersist() {
-  appStatus.textContent = "Saving…";
-  try {
-    await saveJournalsToDrive(journalFileId, journals);
-    appStatus.textContent = "";
-  } catch (err) {
-    console.error(err);
-    appStatus.textContent = "Save failed — try again";
-  }
-}
-
-editorDoneBtn.addEventListener("click", async () => {
+editorDoneBtn.addEventListener("click", () => {
   const text = editorTextarea.value.trim();
   if (!text) {
     closeEditor();
@@ -565,7 +658,7 @@ editorDoneBtn.addEventListener("click", async () => {
 
   closeEditor();
   renderEntries();
-  await persistJournals();
+  saveLocal();
 });
 
 deleteBtn.addEventListener("click", () => {
@@ -578,12 +671,12 @@ confirmDeleteCancelBtn.addEventListener("click", () => {
   editorPanel.classList.remove("hidden");
 });
 
-confirmDeleteBtn.addEventListener("click", async () => {
+confirmDeleteBtn.addEventListener("click", () => {
   const journal = getActiveJournal();
   journal.entries = journal.entries.filter((en) => en.timestamp !== editingTimestamp);
   closeEditor();
   renderEntries();
-  await persistJournals();
+  saveLocal();
 });
 
 // Service worker registration — enables installability + offline shell.
