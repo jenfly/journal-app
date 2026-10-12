@@ -169,6 +169,4 @@ function mergeDocs(local, remote, opts) {
   }
 }
 
-if (typeof module !== "undefined") {
-  module.exports = { validDoc, canonJSON, normalizeDoc, isPristine, journalCounts, syncPlan, mergeDocs };
-}
+if (typeof module !== "undefined") module.exports = { validDoc, canonJSON, normalizeDoc, isPristine, journalCounts, syncPlan, mergeDocs };
