@@ -101,6 +101,17 @@ body {
   background: var(--border);
 }
 
+.backup-status {
+  margin: 0;
+  padding: 0 0.9rem 0.6rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.backup-status.error {
+  color: var(--danger);
+}
+
 .journal-switcher {
   position: relative;
 }

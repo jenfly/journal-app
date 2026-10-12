@@ -23,6 +23,7 @@ const LAST_JOURNAL_KEY = "journal_app_last_journal_id";
 // ---- Local cache: the always-used local copy (see logic.js for validDoc/isPristine/etc.) ----
 const CACHE_KEY = "journal_app_v1";
 const IMPORTED_KEY = "journal_app_v1:imported";
+const DRIVE_BACKUP_AT_KEY = "journal_app_drive_backup_at";
 
 const importSection = document.getElementById("import-section");
 const importBtn = document.getElementById("import-btn");
@@ -30,6 +31,8 @@ const appStatus = document.getElementById("status");
 const saveErrorEl = document.getElementById("save-error");
 const settingsBtn = document.getElementById("settings-btn");
 const settingsMenu = document.getElementById("settings-menu");
+const backupBtn = document.getElementById("backup-btn");
+const backupStatus = document.getElementById("backup-status");
 const signoutBtn = document.getElementById("signout-btn");
 const journalSection = document.getElementById("journal-section");
 const entriesList = document.getElementById("entries");
@@ -150,6 +153,9 @@ window.addEventListener("load", () => {
   accessToken = loadStoredToken();
 });
 
+// "Disconnect Google Drive" — unrelated to the journal itself (which lives in localStorage):
+// this only revokes the Drive token used for backup/import. Supabase sign-out (when sync
+// exists) is a separate action in its own section.
 signoutBtn.addEventListener("click", () => {
   if (accessToken) {
     google.accounts.oauth2.revoke(accessToken);
@@ -285,6 +291,45 @@ async function saveJournalsToDrive(fileId, journalsToSave) {
   });
 }
 
+// Manual "Back up to Drive" — the only remaining write path to Drive. There is deliberately
+// no restore action: with the local cache (and, later, Supabase sync) as the real store,
+// Drive is a one-way manual safety copy. Reuses an already-granted token if one is cached;
+// otherwise asks for consent (an infrequent, user-initiated action, so a prompt here is
+// expected, unlike the silent-first startup/import paths).
+function renderBackupStatus() {
+  const at = localStorage.getItem(DRIVE_BACKUP_AT_KEY);
+  backupStatus.classList.remove("error");
+  backupStatus.textContent = at
+    ? "Last backup: " + formatTimestamp(new Date(Number(at)).toISOString())
+    : "Never backed up to Drive.";
+}
+
+async function backupToDrive() {
+  backupBtn.disabled = true;
+  backupStatus.classList.remove("error");
+  backupStatus.textContent = "Backing up…";
+  try {
+    if (!accessToken) await requestDriveToken(true);
+    let fileId = await findJournalFileId();
+    if (!fileId) {
+      const created = await createJournalFile();
+      fileId = created.fileId;
+    }
+    await saveJournalsToDrive(fileId, journals);
+    localStorage.setItem(DRIVE_BACKUP_AT_KEY, String(Date.now()));
+    renderBackupStatus();
+  } catch (err) {
+    console.error(err);
+    accessToken = null; // force a fresh consent request if the user retries
+    backupStatus.textContent = "Backup failed — try again.";
+    backupStatus.classList.add("error");
+  } finally {
+    backupBtn.disabled = false;
+  }
+}
+
+backupBtn.addEventListener("click", backupToDrive);
+
 // ---- Local cache: load/save, startup flow, one-time Drive import ----
 // loadLocal/saveLocal are the only read/write path for journals now. validDoc comes from
 // logic.js (loaded before this file — see index.html).
@@ -350,6 +395,7 @@ function enterApp() {
   showMainUI(true);
   renderJournalMenu();
   renderActiveJournal();
+  renderBackupStatus();
 }
 
 // The existing-user upgrade path: this device has signed in to Drive before (so it may hold
