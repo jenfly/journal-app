@@ -47,7 +47,6 @@ const syncChooseCloudBtn = document.getElementById("sync-choose-cloud-btn");
 const syncChooseDeviceBtn = document.getElementById("sync-choose-device-btn");
 const backupBtn = document.getElementById("backup-btn");
 const backupStatus = document.getElementById("backup-status");
-const signoutBtn = document.getElementById("signout-btn");
 const journalSection = document.getElementById("journal-section");
 const entriesList = document.getElementById("entries");
 const emptyState = document.getElementById("empty");
@@ -171,18 +170,6 @@ window.addEventListener("load", () => {
   });
 
   accessToken = loadStoredToken();
-});
-
-// "Disconnect Google Drive" — unrelated to the journal itself (which lives in localStorage):
-// this only revokes the Drive token used for backup/import. Supabase sign-out (when sync
-// exists) is a separate action in its own section.
-signoutBtn.addEventListener("click", () => {
-  if (accessToken) {
-    google.accounts.oauth2.revoke(accessToken);
-  }
-  accessToken = null;
-  localStorage.removeItem(TOKEN_STORAGE_KEY);
-  localStorage.removeItem(HAS_SIGNED_IN_KEY);
 });
 
 settingsBtn.addEventListener("click", (e) => {

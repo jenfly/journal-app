@@ -46,4 +46,4 @@ The journal's real safety net today is: the local `localStorage` copy, the Supab
 
 ## Deployment
 
-Deployed via GitHub Pages from the `main` branch. `develop` is the ongoing working branch; feature branches are cut from `develop` and merged back before eventually reaching `main`.
+Deployed via GitHub Pages from the `main` branch. Work directly on `main`, or on a short-lived feature branch merged back into `main` — changes go live as soon as they land there.

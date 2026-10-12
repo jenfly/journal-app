@@ -131,8 +131,7 @@ body {
   justify-content: flex-start;
 }
 
-#backup-btn,
-#signout-btn {
+#backup-btn {
   margin-bottom: 0.4rem;
 }
 

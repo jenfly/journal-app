@@ -115,4 +115,4 @@ Any UI change (the settings panel states especially: signed-out, signed-in, sync
 
 ## Deployment
 
-Deployed via GitHub Pages from the `main` branch. `develop` is the ongoing working branch; feature branches (like `supabase-sync`) are cut from `develop`. Everything lands on `main` (and thus goes live) once merged.
+Deployed via GitHub Pages from the `main` branch. Work directly on `main`, or on a short-lived feature branch merged back into `main` — changes go live as soon as they land there.
