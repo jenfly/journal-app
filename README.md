@@ -40,10 +40,6 @@ Only needed for the one-time import (upgrading a device from the old Drive-only 
 
 `app.js` currently reuses the OAuth client created for `pwa-starter`, since Authorized JavaScript origins are matched by origin, not path, and both apps share the `https://jenfly.github.io` origin. Create a separate client here instead if that reuse becomes undesirable. This is a separate OAuth setup from Supabase's own Google sign-in (used for cloud sync) — don't conflate the two.
 
-## Backups
-
-The journal's real safety net today is: the local `localStorage` copy, the Supabase cloud copy (once signed in to sync), and the manual "Back up to Drive" action in Settings. A local script used to keep a rolling 31-day backup of the Drive file outside Drive itself — see [jenfly/google-backups](https://github.com/jenfly/google-backups) for the script. **That script now only archives whatever "Back up to Drive" last wrote**, which is no longer the live data (the live data is `localStorage` + Supabase) — it's only as fresh as the last manual backup. Whether that script should instead read from Supabase, whether this app should auto-trigger a Drive backup after sync, or whether the current manual-only staleness is acceptable, is an open question (not yet decided) — see Open question 3 in the migration handoff context if revisiting this.
-
 ## Deployment
 
 Deployed via GitHub Pages from the `main` branch. Work directly on `main`, or on a short-lived feature branch merged back into `main` — changes go live as soon as they land there.
