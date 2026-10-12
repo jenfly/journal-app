@@ -101,6 +101,41 @@ body {
   background: var(--border);
 }
 
+.settings-panel {
+  gap: 1rem;
+}
+
+.settings-panel h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.settings-section h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+}
+
+.settings-hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.settings-hint.error {
+  color: var(--danger);
+}
+
+.sync-actions,
+.sync-choose-actions {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+#backup-btn,
+#signout-btn {
+  margin-bottom: 0.4rem;
+}
+
 .journal-switcher {
   position: relative;
 }
@@ -203,6 +238,26 @@ body {
   margin: 0.35rem 0 0;
   font-size: 0.85rem;
   color: var(--muted);
+}
+
+.save-error {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.sync-toast {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
 }
 
 main {
@@ -351,10 +406,15 @@ main {
   display: none;
 }
 
-.auth-section {
+.import-section {
   max-width: 480px;
   margin: 0 auto;
   padding: 0 1rem;
+}
+
+.import-section p {
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 .btn {

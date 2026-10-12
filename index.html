@@ -34,17 +34,16 @@
     </div>
     <div class="settings">
       <button id="settings-btn" type="button" class="icon-btn hidden" aria-label="Settings" aria-haspopup="true" aria-expanded="false">&#8942;</button>
-      <div id="settings-menu" class="settings-menu hidden">
-        <button id="signout-btn" type="button" class="menu-item">Sign out</button>
-      </div>
     </div>
   </div>
   <p id="status" class="status" aria-live="polite"></p>
+  <p id="save-error" class="save-error hidden" role="alert">Couldn't save on this device — this change may be lost when you close the app.</p>
+  <p id="sync-toast" class="sync-toast hidden" role="status"></p>
 </header>
 
-<section id="auth-section" class="auth-section">
-  <p id="auth-status" class="status" aria-live="polite">Not signed in</p>
-  <button id="signin-btn" type="button" class="btn">Sign in with Google</button>
+<section id="import-section" class="import-section hidden">
+  <p>We found a previous sign-in on this device. Import your journal to continue.</p>
+  <button id="import-btn" type="button" class="btn">Import your journal from Google Drive</button>
 </section>
 
 <main id="journal-section" class="hidden">
@@ -99,7 +98,54 @@
   </div>
 </div>
 
+<div id="settings-overlay" class="editor-overlay hidden">
+  <div class="editor settings-panel">
+    <div class="editor-header">
+      <h2>Settings</h2>
+      <button id="settings-close-btn" type="button" class="icon-btn" aria-label="Close settings">&#10005;</button>
+    </div>
+
+    <section class="settings-section">
+      <h3>Sync across devices</h3>
+      <p class="settings-hint">Keeps this journal in step across your devices. Signing in or out here also signs you in or out of Well Tended and Meal Planner.</p>
+
+      <div id="sync-signed-out" class="sync-state">
+        <button id="sync-signin-btn" type="button" class="btn">Sign in with Google</button>
+      </div>
+
+      <div id="sync-signed-in" class="sync-state hidden">
+        <p id="sync-email" class="settings-hint"></p>
+        <p id="sync-status-text" class="settings-hint" aria-live="polite"></p>
+        <div class="editor-actions sync-actions">
+          <button id="sync-now-btn" type="button" class="btn btn-secondary">Sync now</button>
+          <button id="sync-signout-btn" type="button" class="btn btn-secondary">Sign out</button>
+        </div>
+      </div>
+
+      <div id="sync-choose" class="sync-state hidden">
+        <p id="sync-choose-text" class="settings-hint"></p>
+        <div class="editor-actions sync-choose-actions">
+          <button id="sync-choose-merge-btn" type="button" class="btn">Merge both</button>
+          <button id="sync-choose-cloud-btn" type="button" class="btn btn-secondary">Use cloud copy</button>
+          <button id="sync-choose-device-btn" type="button" class="btn btn-secondary">Keep this device's copy</button>
+        </div>
+      </div>
+    </section>
+
+    <div class="menu-divider"></div>
+
+    <section class="settings-section">
+      <h3>Backup (Google Drive)</h3>
+      <button id="backup-btn" type="button" class="btn btn-secondary">Back up to Drive</button>
+      <p id="backup-status" class="settings-hint"></p>
+      <button id="signout-btn" type="button" class="btn btn-secondary">Disconnect Google Drive</button>
+    </section>
+  </div>
+</div>
+
 <script src="https://accounts.google.com/gsi/client" defer></script>
+<script src="logic.js" defer></script>
+<script src="sync.js" defer></script>
 <script src="app.js" defer></script>
 </body>
 </html>

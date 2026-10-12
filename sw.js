@@ -1,8 +1,10 @@
-const CACHE_NAME = "journal-app-v10";
+const CACHE_NAME = "journal-app-v11";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
+  "./logic.js",
+  "./sync.js",
   "./app.js",
   "./manifest.json",
   "./icons/icon-192.png",
@@ -42,6 +44,10 @@ self.addEventListener("activate", (event) => {
 // Cache-first for the app shell, falling back to network for anything else.
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  // Supabase, Google Identity Services, and Drive requests must always go straight to the
+  // network — they're never part of the cached app shell, and caching an API response (or an
+  // auth redirect) here would be actively wrong, not just unnecessary.
+  if (new URL(event.request.url).origin !== self.location.origin) return;
 
   event.respondWith(
     caches.match(event.request).then((cached) => {
