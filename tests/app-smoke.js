@@ -95,8 +95,11 @@ async function scenario2() {
   assert.strictEqual(cache.journals[0].entries[0].text, "from drive");
   assert.strictEqual(win.localStorage.getItem("journal_app_v1:imported"), "true");
   assert.strictEqual(win.document.querySelector("#entries .entry p").textContent, "from drive");
+  const toast = win.document.getElementById("sync-toast");
+  assert.strictEqual(toast.classList.contains("hidden"), false, "a one-time nudge toward turning on sync should show after the import completes");
+  assert(toast.textContent.toLowerCase().indexOf("sync") >= 0, toast.textContent);
   win.close();
-  console.log("scenario 2 (no cache + prior Drive sign-in: one-time import populates the cache) ok");
+  console.log("scenario 2 (no cache + prior Drive sign-in: one-time import populates the cache, nudges toward sync) ok");
 }
 
 async function scenario2b() {

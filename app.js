@@ -557,6 +557,8 @@ function finishImport() {
   importSection.classList.add("hidden");
   appStatus.textContent = "";
   enterApp();
+  // One-time nudge, since this import only ever runs once per device (gated by IMPORTED_KEY).
+  showSyncToast("Your journal was imported. Turn on sync in Settings to keep it updated across devices.", false);
 }
 
 importBtn.addEventListener("click", () => attemptImport(true));
